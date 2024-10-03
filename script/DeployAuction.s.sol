@@ -6,32 +6,27 @@ import "../src/SmartAuction.sol";
 
 contract DeploySmartAuction is Script {
     function run() external {
-        // Load private key and environment variables from .env file
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address vrfCoordinator = vm.envAddress("VRF_COORDINATOR");
-        address linkToken = vm.envAddress("LINK_TOKEN");
-        address vrfWrapper = vm.envAddress("VRF_WRAPPER");
-        bytes32 keyHash = vm.envBytes32("VRF_KEY_HASH");
-        uint64 subscriptionId = uint64(vm.envUint("VRF_SUBSCRIPTION_ID"));
+        // Load environment variables for the deployment (replace with real values)
+        address nftAddress = vm.envAddress("NFT_ADDRESS");
+        uint256 nftId = vm.envUint("NFT_ID");
+        address rewardTokenAddress = vm.envAddress("REWARD_TOKEN_ADDRESS");
+        uint256 minBidIncrement = vm.envUint("MIN_BID_INCREMENT");
 
-        // Start broadcasting the transaction to the network
-        vm.startBroadcast(deployerPrivateKey);
+        // Start broadcasting transactions
+        vm.startBroadcast();
 
         // Deploy the SmartAuction contract
         SmartAuction auction = new SmartAuction(
-            vrfCoordinator, // Chainlink VRF Coordinator on Sepolia
-            linkToken, // LINK Token Address on Sepolia
-            vrfWrapper, // VRF Wrapper Address on Sepolia
-            keyHash, // Key Hash for VRF
-            subscriptionId, // VRF Subscription ID
-            200000, // Callback gas limit
-            3 // Number of confirmations
+            nftAddress, // Address of the NFT being auctioned
+            nftId, // ID of the NFT token
+            rewardTokenAddress, // Address of the ERC20 reward token
+            minBidIncrement // Minimum bid increment percentage
         );
 
-        // Output the deployed contract address to the console
+        // Output the deployed contract address
         console.log("SmartAuction deployed at:", address(auction));
 
-        // Stop broadcasting once deployment is complete
+        // Stop broadcasting transactions
         vm.stopBroadcast();
     }
 }

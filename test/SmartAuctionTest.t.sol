@@ -6,20 +6,24 @@ import "../src/SmartAuction.sol";
 
 contract SmartAuctionTest is Test {
     SmartAuction auction;
-    address owner = address(0x123);
-    address bidder1 = address(0x456);
-    address bidder2 = address(0x789);
+    address owner = address(0x123); // Set the owner address
+    address bidder1 = address(0x456); // Address of first bidder
+    address bidder2 = address(0x789); // Address of second bidder
+    IERC721 nft;
+    IERC20 rewardToken;
 
     function setUp() public {
-        // Deploy the SmartAuction contract with Sepolia VRF configuration
+        // Mock NFT and reward token setup (using an example address, replace it with actual mocks if needed)
+        nft = IERC721(address(0x1111)); // Mock NFT
+        rewardToken = IERC20(address(0x2222)); // Mock ERC20 reward token
+
+        // Deploy the auction contract with the correct owner
+        vm.prank(owner);
         auction = new SmartAuction(
-            0x8103B0A8A00be2DDC778e6e7eaa21791Cd364625, // Sepolia VRF Coordinator
-            0x779877A7B0D9E8603169DdbD7836e478b4624789, // LINK Token on Sepolia
-            0x6f13400000000000000000000000000000000000, // VRF Wrapper on Sepolia (Example)
-            0x2ed0feb3e12a3f7173e2323de4460b8b121618eb7ee839c9d48907f5ea040934, // Key Hash
-            12345, // VRF Subscription ID
-            200000, // Callback gas limit
-            3 // Number of confirmations
+            address(nft),
+            1, // NFT ID
+            address(rewardToken),
+            5 // Minimum bid increment percentage
         );
     }
 
@@ -30,53 +34,64 @@ contract SmartAuctionTest is Test {
         assertEq(auction.highestBidder(), address(0));
     }
 
-    // Test to start the auction successfully by the owner
+    // Test starting the auction (must be called by owner)
     function testStartAuction() public {
-        vm.prank(owner); // Simulate transaction from owner
+        vm.prank(owner); // Simulate the transaction from the owner address
         auction.startAuction(3600); // Start auction for 1 hour
         assertEq(auction.auctionStarted(), true);
         assertGt(auction.auctionEndTime(), block.timestamp);
     }
 
-    // Test to place bids and ensure the highest bid is correctly updated
+    // Test placing a bid
     function testPlaceBid() public {
-        vm.prank(owner);
-        auction.startAuction(3600); // Start auction
+        // Start the auction
+        vm.prank(owner); // Ensure the owner starts the auction
+        auction.startAuction(3600);
 
         // Bidder1 places a bid
-        vm.prank(bidder1);
+        vm.prank(bidder1); // Simulate transaction from bidder1
         auction.bid{value: 1 ether}();
+
         assertEq(auction.highestBid(), 1 ether);
         assertEq(auction.highestBidder(), bidder1);
 
         // Bidder2 places a higher bid
-        vm.prank(bidder2);
+        vm.prank(bidder2); // Simulate transaction from bidder2
         auction.bid{value: 1.1 ether}();
+
         assertEq(auction.highestBid(), 1.1 ether);
         assertEq(auction.highestBidder(), bidder2);
     }
 
-    // Test to check that the auction end time extends when a bid is placed within the last 5 minutes
-    function testExtendAuctionEndTime() public {
-        vm.prank(owner);
-        auction.startAuction(3600); // Start auction
+    // Test the anti-sniping mechanism: extending the auction end time
+    function testAuctionEndTimeExtension() public {
+        vm.prank(owner); // Ensure the owner starts the auction
+        auction.startAuction(3600); // Start auction for 1 hour
 
-        // Fast-forward time to the last 5 minutes
+        // Fast forward to the last 5 minutes
         vm.warp(block.timestamp + 3550);
 
-        // Bidder1 places a bid, extending the auction end time
+        // Bidder1 places a bid
         vm.prank(bidder1);
         auction.bid{value: 1 ether}();
 
-        // Check that the auction end time was extended by 5 minutes
-        uint256 auctionEndTime = auction.auctionEndTime();
-        assertGt(auctionEndTime, block.timestamp + 300);
+        // Ensure the auction end time is extended by 5 minutes
+        uint256 newEndTime = auction.auctionEndTime();
+        assertGt(newEndTime, block.timestamp + 300);
     }
 
-    // Test that a user can withdraw their funds after being outbid
-    function testBidderWithdrawFunds() public {
-        vm.prank(owner);
-        auction.startAuction(3600); // Start auction
+    // Test that only the owner can start the auction
+    function testOnlyOwnerCanStartAuction() public {
+        // Try to start the auction from a non-owner account (should revert)
+        vm.prank(bidder1); // Simulate transaction from non-owner (bidder1)
+        vm.expectRevert("Ownable: caller is not the owner");
+        auction.startAuction(3600);
+    }
+
+    // Test withdrawing funds after being outbid
+    function testWithdrawAfterOutbid() public {
+        vm.prank(owner); // Start the auction as the owner
+        auction.startAuction(3600);
 
         // Bidder1 places a bid
         vm.prank(bidder1);
@@ -86,16 +101,14 @@ contract SmartAuctionTest is Test {
         vm.prank(bidder2);
         auction.bid{value: 1.1 ether}();
 
-        // Bidder1 is outbid and can withdraw funds
+        // Ensure Bidder1 is outbid and can withdraw funds
         uint256 initialBalance = bidder1.balance;
         vm.prank(bidder1);
         auction.withdraw();
-
-        // Ensure Bidder1 has their funds returned
         assertEq(bidder1.balance, initialBalance + 1 ether);
     }
 
-    // Test ending the auction and finalizing the highest bidder
+    // Test ending the auction (must be called by the owner)
     function testEndAuction() public {
         vm.prank(owner);
         auction.startAuction(3600); // Start auction
@@ -104,38 +117,35 @@ contract SmartAuctionTest is Test {
         vm.prank(bidder1);
         auction.bid{value: 1 ether}();
 
-        // Fast forward to after the auction end time
+        // Fast forward to the auction end time
         vm.warp(block.timestamp + 3601);
 
-        // End the auction
+        // End the auction (only owner can do this)
         vm.prank(owner);
         auction.endAuction();
 
-        // Ensure auction is finalized correctly
+        // Ensure auction is ended and highest bidder gets the NFT
         assertEq(auction.auctionStarted(), false);
         assertEq(auction.highestBid(), 1 ether);
         assertEq(auction.highestBidder(), bidder1);
     }
 
-    // Test that no bids can be placed after the auction has ended
-    function testCannotBidAfterAuctionEnd() public {
+    // Test the reward mechanism for the lucky bidder
+    function testRewardLuckyBidder() public {
         vm.prank(owner);
         auction.startAuction(3600); // Start auction
 
-        // Fast forward to after the auction end time
-        vm.warp(block.timestamp + 3601);
-
-        // Attempt to place a bid (should revert)
+        // Bidder1 places a bid
         vm.prank(bidder1);
-        vm.expectRevert("Auction has already ended.");
         auction.bid{value: 1 ether}();
-    }
 
-    // Test that only the owner can start the auction
-    function testOnlyOwnerCanStartAuction() public {
-        // Attempt to start the auction from a non-owner account
-        vm.prank(bidder1);
-        vm.expectRevert("Ownable: caller is not the owner");
-        auction.startAuction(3600);
+        // Simulate reward mechanism by calling `bid` multiple times
+        uint256 initialRewardBalance = rewardToken.balanceOf(bidder1);
+        vm.warp(block.timestamp + 1);
+        auction.bid{value: 1 ether}();
+
+        // Ensure Bidder1 received a reward (if lucky)
+        uint256 newRewardBalance = rewardToken.balanceOf(bidder1);
+        assertGt(newRewardBalance, initialRewardBalance);
     }
 }

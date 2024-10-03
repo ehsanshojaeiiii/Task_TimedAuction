@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
+
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.8/VRFV2WrapperConsumerBase.sol";
 
-contract SmartAuction is VRFV2WrapperConsumerBase, ReentrancyGuard, Ownable {
+contract SmartAuction is ReentrancyGuard, Ownable {
     IERC721 public nft;
     IERC20 public rewardToken;
     uint256 public nftId;
@@ -22,14 +22,6 @@ contract SmartAuction is VRFV2WrapperConsumerBase, ReentrancyGuard, Ownable {
     uint256 public biddingExtensionTime = 5 * 60; // 5 minutes extension time for anti-sniping
     uint256 public lastBidTime;
 
-    // Chainlink VRF V2 variables
-    uint64 public subscriptionId;
-    bytes32 public keyHash;
-    uint32 public callbackGasLimit;
-    uint16 public requestConfirmations;
-    uint32 public numWords = 1; // We need only 1 random number
-    mapping(uint256 => address) public requestIdToBidder;
-
     event AuctionStarted(uint256 endTime);
     event AuctionManuallyStarted(uint256 startTime, uint256 endTime);
     event AuctionPaused();
@@ -39,29 +31,17 @@ contract SmartAuction is VRFV2WrapperConsumerBase, ReentrancyGuard, Ownable {
     event NFTTransferred(address winner);
     event RewardGranted(address luckyBidder, uint256 amount);
     event AuctionExtended(uint256 newEndTime);
-    event RandomnessRequested(uint256 requestId, address bidder);
 
     constructor(
         address _nftAddress,
         uint256 _nftId,
         address _rewardTokenAddress,
-        uint256 _minBidIncrement,
-        address _vrfCoordinator,
-        address _linkToken,
-        address _wrapperAddress,
-        bytes32 _keyHash,
-        uint64 _subscriptionId,
-        uint32 _callbackGasLimit,
-        uint16 _requestConfirmations
-    ) VRFV2WrapperConsumerBase(_linkToken, _wrapperAddress) {
+        uint256 _minBidIncrement
+    ) Ownable(msg.sender) {
         nft = IERC721(_nftAddress);
         rewardToken = IERC20(_rewardTokenAddress);
         nftId = _nftId;
         minBidIncrement = _minBidIncrement;
-        keyHash = _keyHash;
-        subscriptionId = _subscriptionId;
-        callbackGasLimit = _callbackGasLimit;
-        requestConfirmations = _requestConfirmations;
         auctionStarted = false;
         auctionPaused = false;
     }
@@ -119,44 +99,32 @@ contract SmartAuction is VRFV2WrapperConsumerBase, ReentrancyGuard, Ownable {
         highestBid = msg.value;
         lastBidTime = block.timestamp;
 
-        // Request randomness for lucky bidder reward
-        requestRandomnessForReward(msg.sender);
+        // Basic randomness logic for reward
+        rewardLuckyBidder(msg.sender);
 
         emit BidPlaced(msg.sender, msg.value);
     }
 
-    // Dynamic reward calculation based on bid size
-    function calculateReward(uint256 bidAmount) private view returns (uint256) {
-        uint256 rewardBase = 10 * 10 ** 18; // Base reward of 10 tokens
-        return rewardBase + ((bidAmount * rewardBase) / 100); // Example: adjust based on bid size
-    }
+    // Basic pseudo-random reward calculation using block properties
+    function rewardLuckyBidder(address bidder) private {
+        // Generate pseudo-random number between 1 and 100
+        uint256 randomNumber = (uint256(
+            keccak256(
+                abi.encodePacked(block.timestamp, block.prevrandao, msg.sender)
+            )
+        ) % 100) + 1;
 
-    // Request randomness from Chainlink VRF V2
-    function requestRandomnessForReward(address bidder) internal {
-        uint256 requestId = requestRandomWords(
-            keyHash,
-            subscriptionId,
-            requestConfirmations,
-            callbackGasLimit,
-            numWords
-        );
-        requestIdToBidder[requestId] = bidder;
-        emit RandomnessRequested(requestId, bidder);
-    }
-
-    // Function that Chainlink VRF V2 calls to fulfill the randomness request
-    function fulfillRandomWords(
-        uint256 requestId,
-        uint256[] memory randomWords
-    ) internal override {
-        address bidder = requestIdToBidder[requestId];
-        uint256 randomness = randomWords[0]; // Use the first random word
-        uint256 rewardChance = (randomness % 100) + 1; // Generate a number between 1-100
-        if (rewardChance <= rewardChanceCap) {
-            uint256 rewardAmount = calculateReward(highestBid); // Reward now based on bid size
+        if (randomNumber <= rewardChanceCap) {
+            uint256 rewardAmount = calculateReward(highestBid);
             rewardToken.transfer(bidder, rewardAmount);
             emit RewardGranted(bidder, rewardAmount);
         }
+    }
+
+    // Dynamic reward calculation based on bid size
+    function calculateReward(uint256 bidAmount) private pure returns (uint256) {
+        uint256 rewardBase = 10 * 10 ** 18; // Base reward of 10 tokens
+        return rewardBase + ((bidAmount * rewardBase) / 100); // Example: adjust based on bid size
     }
 
     // Withdraw funds if outbid
