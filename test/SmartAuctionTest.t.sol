@@ -28,7 +28,7 @@ contract SmartAuctionTest is Test {
     }
 
     // Test the initial state of the auction contract
-    function testInitialState() public {
+    function testInitialState() public view {
         assertEq(auction.auctionStarted(), false);
         assertEq(auction.highestBid(), 0);
         assertEq(auction.highestBidder(), address(0));
@@ -57,7 +57,7 @@ contract SmartAuctionTest is Test {
 
         // Bidder2 places a higher bid
         vm.prank(bidder2); // Simulate transaction from bidder2
-        auction.bid{value: 1.1 ether}();
+        auction.bid{value: 1.1 ether}(); // Ensure this is greater than 1 ether + minBidIncrement
 
         assertEq(auction.highestBid(), 1.1 ether);
         assertEq(auction.highestBidder(), bidder2);
@@ -111,13 +111,13 @@ contract SmartAuctionTest is Test {
     // Test ending the auction (must be called by the owner)
     function testEndAuction() public {
         vm.prank(owner);
-        auction.startAuction(3600); // Start auction
+        auction.startAuction(3600); // Start auction for 1 hour
 
         // Bidder1 places a bid
         vm.prank(bidder1);
         auction.bid{value: 1 ether}();
 
-        // Fast forward to the auction end time
+        // Fast forward to after the auction end time
         vm.warp(block.timestamp + 3601);
 
         // End the auction (only owner can do this)
@@ -133,7 +133,7 @@ contract SmartAuctionTest is Test {
     // Test the reward mechanism for the lucky bidder
     function testRewardLuckyBidder() public {
         vm.prank(owner);
-        auction.startAuction(3600); // Start auction
+        auction.startAuction(3600); // Start auction for 1 hour
 
         // Bidder1 places a bid
         vm.prank(bidder1);
