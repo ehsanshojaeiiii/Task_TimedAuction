@@ -19,9 +19,9 @@ contract DeploySmartAuction is Script {
 
         // Deploy the SmartAuction contract
         SmartAuction auction = new SmartAuction(
-            vrfCoordinator, // Chainlink VRF Coordinator
-            linkToken, // LINK Token Address
-            vrfWrapper, // VRF Wrapper Address
+            vrfCoordinator, // Chainlink VRF Coordinator on Sepolia
+            linkToken, // LINK Token Address on Sepolia
+            vrfWrapper, // VRF Wrapper Address on Sepolia
             keyHash, // Key Hash for VRF
             subscriptionId, // VRF Subscription ID
             200000, // Callback gas limit
