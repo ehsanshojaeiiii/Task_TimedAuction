@@ -2,7 +2,7 @@
 src = "src"
 out = "out"
 libs = ["lib"]
-remappings = ["@openzeppelin/=lib/openzeppelin-contracts/"]
 
+remappings = ["@openzeppelin/=lib/openzeppelin-contracts/" , "@chainlink/=lib//"]
 [rpc_endpoints]
 sepolia = "https://sepolia.infura.io/v3/1bc9d27128bf43598b04de204f548345"
